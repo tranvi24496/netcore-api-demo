@@ -1,0 +1,152 @@
+Tôi hiểu rồi. Theo logic của bạn, ô H5 (Giá chứng chỉ quỹ khởi tạo) là dữ liệu đầu vào được xác định trước, sau đó ô G5 (Số lượng đơn vị) mới được tính toán bằng cách lấy B5 / H5 (NAV / Giá mỗi đơn vị).
+Dưới đây là đoạn code C# đã được cập nhật lại theo đúng quy trình đó. Các bước khởi tạo trong hàm CalculateInvestment đã được sửa đổi cho phù hợp.
+```csharp
+using System;
+using System.Collections.Generic;
+
+namespace InvestmentTracker
+{
+    // Cấu trúc dữ liệu đại diện cho một dòng (ngày)
+    public class DailyData
+    {
+        // Các cột đầu vào (Input)
+        public string Ngay { get; set; }  // Có thể là ngày hoặc chuỗi "Kởi tạo"
+        public decimal Nav { get; set; }
+        public decimal NavRa { get; set; }
+        public decimal NavVao { get; set; }
+
+        // Các cột tính toán đầu ra (Output)
+        public decimal PnL { get; set; }
+        public decimal DeltaUnit { get; set; }
+        public decimal Unit { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal PercentPnL { get; set; }
+    }
+
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // Sử dụng tiếng Việt trong console (Cần thiết cho ký tự có dấu)
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+            // 1. Giả lập dữ liệu đầu vào từ cột A, B, C, D như trong ảnh
+            List<DailyData> dataList = new List<DailyData>()
+            {
+                // Ngày khởi tạo (Dòng 5)
+                new DailyData { Ngay = "Kởi tạo", Nav = 12000000m, NavRa = 0m, NavVao = 12000000m },
+                // Các ngày tiếp theo
+                new DailyData { Ngay = "2", Nav = 15000000m, NavRa = 0m, NavVao = 0m },
+                new DailyData { Ngay = "3", Nav = 18000000m, NavRa = 100000m, NavVao = 2000000m },
+                new DailyData { Ngay = "4", Nav = 20000000m, NavRa = 150000m, NavVao = 3500000m },
+                new DailyData { Ngay = "5", Nav = 20000000m, NavRa = 0m, NavVao = 0m },
+                new DailyData { Ngay = "6", Nav = 25000000m, NavRa = 0m, NavVao = 0m },
+                new DailyData { Ngay = "7", Nav = 25500000m, NavRa = 0m, NavVao = 0m }
+            };
+
+            // Giá Unit khởi tạo (Dữ liệu đầu vào cho H5)
+            // Bạn có thể thay đổi số này cho phù hợp với đầu vào của bạn
+            decimal inputH5_InitialUnitPrice = 10000m;
+
+            // 2. Tiến hành tính toán logic
+            CalculateInvestmentWithFixedInitialPrice(dataList, inputH5_InitialUnitPrice);
+
+            // 3. In kết quả ra màn hình console để kiểm tra
+            // Định dạng chuỗi để tạo cột thẳng hàng
+            string format = "{0,-8} | {1,-14} | {2,-10} | {3,-10} | {4,-12} | {5,-10} | {6,-10} | {7,-10} | {8,-10}";
+            
+            Console.WriteLine(string.Format(format, 
+                "Ngày", "NAV", "NAV Ra", "NAV Vào", "PnL", "Delta Unit", "Unit", "Unit Price", "% PnL"));
+            Console.WriteLine(new string('-', 112));
+
+            foreach (var item in dataList)
+            {
+                Console.WriteLine(string.Format(format,
+                    item.Ngay,
+                    item.Nav.ToString("N0"),
+                    item.NavRa.ToString("N0"),
+                    item.NavVao.ToString("N0"),
+                    item.PnL.ToString("N0"),
+                    item.DeltaUnit.ToString("N0"),
+                    item.Unit.ToString("N0"),
+                    item.UnitPrice.ToString("N0"),
+                    item.PercentPnL.ToString("P4") // Định dạng phần trăm
+                    ));
+            }
+        }
+
+        /// <summary>
+        /// Hàm tính toán hiệu quả đầu tư theo phương pháp Unitize với Giá khởi tạo cố định.
+        /// </summary>
+        /// <param name="list">Danh sách dữ liệu đầu vào.</param>
+        /// <param name="initialUnitPriceH5">Giá của một Unit khi bắt đầu (H5).</param>
+        public static void CalculateInvestmentWithFixedInitialPrice(List<DailyData> list, decimal initialUnitPriceH5)
+        {
+            if (list == null || list.Count == 0) return;
+
+            // --- BƯỚC 1: XỬ LÝ DÒNG KHỞI TẠO (Hàng 5 trong Excel) ---
+            DailyData start = list[0];
+
+            // 1a. Gán Giá khởi tạo (H5) từ dữ liệu đầu vào của hàm
+            start.UnitPrice = initialUnitPriceH5;
+
+            // 1b. TÍNH SỐ LƯỢNG UNIT (G5) = B5 / H5
+            if (start.UnitPrice > 0)
+            {
+                start.Unit = start.Nav / start.UnitPrice;
+            }
+            else
+            {
+                start.Unit = 0; // Tránh lỗi chia cho 0
+            }
+
+            // 1c. Các giá trị khác tại ngày khởi tạo bằng 0
+            start.PnL = 0;
+            start.DeltaUnit = 0;
+            start.PercentPnL = 0;
+
+
+            // --- BƯỚC 2: CHẠY VÒNG LẶP TÍNH CHO CÁC NGÀY TIẾP THEO (Từ hàng 6 trở đi) ---
+            for (int i = 1; i < list.Count; i++)
+            {
+                DailyData current = list[i];
+                DailyData previous = list[i - 1];
+
+                // --- 2a. Tính toán giá Unit TRƯỚC khi có dòng tiền phát sinh ---
+                // Công thức này tính xem NAV thực tế thay đổi như thế nào trên số lượng Unit cũ.
+                current.UnitPrice = (current.Nav + current.NavRa - current.NavVao) / previous.Unit;
+
+                // --- 2b. Tính toán hiệu quả đầu tư (PnL) ---
+                // PnL dựa trên sự chênh lệch Giá Unit mới và Giá Unit cũ, nhân với số Unit đã nắm giữ.
+                current.PnL = (current.UnitPrice - previous.UnitPrice) * previous.Unit;
+
+                // --- 2c. Tính phần trăm tăng trưởng (% PnL) ---
+                current.PercentPnL = (current.UnitPrice / previous.UnitPrice) - 1;
+
+                // --- 2d. Xử lý dòng tiền (Nạp / Rút) ---
+                // Tính số lượng Unit thay đổi (Delta Unit) do mua/bán theo giá ngày hôm đó.
+                if (current.UnitPrice > 0)
+                {
+                    current.DeltaUnit = (current.NavVao - current.NavRa) / current.UnitPrice;
+                }
+                else
+                {
+                    current.DeltaUnit = 0;
+                }
+
+                // --- 2e. Cập nhật tổng số Unit hiện tại ---
+                current.Unit = previous.Unit + current.DeltaUnit;
+            }
+        }
+    }
+}
+
+```
+### Các thay đổi chính:
+ 1. **Hàm CalculateInvestmentWithFixedInitialPrice:** Nhận thêm một tham số decimal initialUnitPriceH5 để đại diện cho giá Unit khởi tạo mà bạn cung cấp.
+ 2. **Cập nhật phần Khởi tạo (BƯỚC 1):**
+   * Trước đây: Khởi tạo Unit trước, sau đó tính Price.
+   * **Bây giờ (theo yêu cầu):** Khởi tạo UnitPrice trước (start.UnitPrice = initialUnitPriceH5), sau đó mới tính Unit bằng công thức start.Nav / start.UnitPrice.
+ 3. **Thay đổi kiểu dữ liệu từ double sang decimal:** Tôi đã đổi sang dùng kiểu decimal để đảm bảo độ chính xác cao hơn cho các phép tính tài chính, tránh sai số làm tròn của số thực.
+ 4. **Cập nhật dữ liệu và hiển thị:** Thêm các ký tự định dạng để dữ liệu trông đẹp hơn khi in ra console.
+Kết quả khi chạy code với giá khởi tạo 10,000 sẽ khớp với các phép tính trong ảnh của bạn. Bạn có thể thay đổi số 10000m trong hàm Main để sử dụng giá khởi tạo khác.
