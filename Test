@@ -1,0 +1,119 @@
+Chào bạn! Việc chuyển đổi logic tính toán NAV (Net Asset Value - Giá trị tài sản ròng) theo phương pháp **Unitize (chia đơn vị Quỹ)** từ Excel sang C# là một cách tuyệt vời để tự động hóa việc theo dõi hiệu quả đầu tư, đặc biệt khi có dòng tiền nạp/rút liên tục.
+Dựa trên bức ảnh bạn cung cấp, chúng ta có thể phân tích công thức Excel ẩn đằng sau các cột như sau:
+### 1. Phân tích Logic Công thức Excel
+ * **Hàng khởi tạo (Hàng 5):**
+   * Unit (G5): Khởi tạo một số lượng chứng chỉ quỹ ban đầu tùy ý (ở đây bạn chọn 1,200).
+   * Unit Price (H5): = B5 / G5 (tức là 12,000,000 / 1,200 = 10,000).
+ * **Các hàng tiếp theo (Hàng i):**
+   * Unit Price (H_i): = (NAV_i + NAV_ra_i - NAV_vao_i) / Unit_{i-1}. Đây là giá chứng chỉ quỹ *trước* khi có dòng tiền mới trong ngày.
+   * PnL (E_i): = (Unit Price_i - Unit Price_{i-1}) * Unit_{i-1} (hoặc lấy chênh lệch NAV trước dòng tiền).
+   * Delta Unit (F_i): = (NAV_vao_i - NAV_ra_i) / Unit Price_i. Số lượng chứng chỉ quỹ thay đổi do nạp/rút tiền (mua/bán theo giá ngày hôm đó).
+   * Unit (G_i): = Unit_{i-1} + Delta Unit_i.
+   * % PnL (I_i): = (Unit Price_i / Unit Price_{i-1}) - 1.
+### 2. Code C# Triển Khai
+Dưới đây là đoạn code C# sử dụng một cấu trúc dữ liệu (class) để đại diện cho mỗi dòng dữ liệu và tính toán tuần tự theo danh sách.
+```csharp
+using System;
+using System.Collections.Generic;
+
+namespace InvestmentTracker
+{
+    public class DailyData
+    {
+        // Các cột đầu vào (Input)
+        public int Ngay { get; set; }
+        public double Nav { get; set; }
+        public double NavRa { get; set; }
+        public double NavVao { get; set; }
+
+        // Các cột tính toán đầu ra (Output)
+        public double PnL { get; set; }
+        public double DeltaUnit { get; set; }
+        public double Unit { get; set; }
+        public double UnitPrice { get; set; }
+        public double PercentPnL { get; set; }
+    }
+
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // 1. Giả lập dữ liệu đầu vào từ cột B, C, D như trong ảnh của bạn
+            List<DailyData> dataList = new List<DailyData>()
+            {
+                // Ngày khởi tạo (Dòng 5 trong Excel)
+                new DailyData { Ngay = 0, Nav = 12000000, NavRa = 0, NavVao = 12000000 },
+                // Các ngày tiếp theo
+                new DailyData { Ngay = 2, Nav = 15000000, NavRa = 0, NavVao = 0 },
+                new DailyData { Ngay = 3, Nav = 18000000, NavRa = 100000, NavVao = 2000000 },
+                new DailyData { Ngay = 4, Nav = 20000000, NavRa = 150000, NavVao = 3500000 },
+                new DailyData { Ngay = 5, Nav = 20000000, NavRa = 0, NavVao = 0 },
+                new DailyData { Ngay = 6, Nav = 25000000, NavRa = 0, NavVao = 0 },
+                new DailyData { Ngay = 7, Nav = 25500000, NavRa = 0, NavVao = 0 }
+            };
+
+            // 2. Tiến hành tính toán logic
+            CalculateInvestment(dataList);
+
+            // 3. In kết quả ra màn hình console để kiểm tra
+            Console.WriteLine(string.Format("{0,-6} | {1,-12} | {2,-10} | {3,-10} | {4,-12} | {5,-10} | {6,-10} | {7,-10} | {8,-10}", 
+                "Ngày", "NAV", "NAV Ra", "NAV Vào", "PnL", "Delta Unit", "Unit", "Unit Price", "% PnL"));
+            Console.WriteLine(new string('-', 105));
+
+            foreach (var item in dataList)
+            {
+                Console.WriteLine(string.Format("{0,-6} | {1,-12:N0} | {2,-10:N0} | {3,-10:N0} | {4,-12:N0} | {5,-10:N0} | {6,-10:N0} | {7,-10:N0} | {8,-10:P4}",
+                    item.Ngay == 0 ? "Kởi tạo" : item.Ngay.ToString(),
+                    item.Nav, item.NavRa, item.NavVao, item.PnL, item.DeltaUnit, item.Unit, item.UnitPrice, item.PercentPnL));
+            }
+        }
+
+        public static void CalculateInvestment(List<DailyData> list)
+        {
+            if (list == null || list.Count == 0) return;
+
+            // Khởi tạo hàng đầu tiên (Hàng số 5 trong Excel)
+            double initialUnit = 1200; // Bạn có thể thay đổi số lượng Unit gốc tùy ý
+            list[0].Unit = initialUnit;
+            list[0].UnitPrice = list[0].Nav / initialUnit;
+            list[0].PnL = 0;
+            list[0].DeltaUnit = 0;
+            list[0].PercentPnL = 0;
+
+            // Chạy vòng lặp tính cho các ngày tiếp theo
+            for (int i = 1; i < list.Count; i++)
+            {
+                DailyData current = list[i];
+                DailyData previous = list[i - 1];
+
+                // Tính Unit Price trước khi có dòng tiền phát sinh trong ngày
+                current.UnitPrice = (current.Nav + current.NavRa - current.NavVao) / previous.Unit;
+
+                // Tính PnL dựa trên sự thay đổi giá Unit Price
+                current.PnL = (current.UnitPrice - previous.UnitPrice) * previous.Unit;
+
+                // Tính phần trăm tăng trưởng (% PnL)
+                current.PercentPnL = (current.UnitPrice / previous.UnitPrice) - 1;
+
+                // Tính số lượng Unit thay đổi do Nạp / Rút tiền
+                if (current.UnitPrice > 0)
+                {
+                    current.DeltaUnit = (current.NavVao - current.NavRa) / current.UnitPrice;
+                }
+                else
+                {
+                    current.DeltaUnit = 0;
+                }
+
+                // Cập nhật tổng số Unit hiện tại
+                current.Unit = previous.Unit + current.DeltaUnit;
+            }
+        }
+    }
+}
+
+```
+### 3. Giải thích một số điểm lưu ý khi chạy code:
+ * **Độ chính xác (double):** Trong code trên mình dùng kiểu double để tính toán phần thập phân thuận tiện. Nếu hệ thống của bạn yêu cầu độ chính xác tài chính tuyệt đối (tránh sai số làm tròn của số thực), bạn hãy đổi tất cả kiểu double thành decimal.
+ * **Định dạng đầu ra (:N0 và :P4):** Khi in kết quả, :N0 giúp phân tách dấu phẩy hàng nghìn (giống định dạng số trong Excel của bạn), và :P4 sẽ tự động nhân với 100 và thêm ký tự % với 4 chữ số thập phân.
+Đoạn code này hoàn toàn có thể tích hợp vào các hàm đọc file Excel (như dùng thư viện EPPlus hoặc ExcelDataReader) để tự động hóa xử lý tệp dữ liệu của bạn!
